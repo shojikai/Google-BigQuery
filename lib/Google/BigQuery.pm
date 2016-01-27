@@ -84,8 +84,19 @@ sub _auth {
   if ($response->is_success) {
     $self->{access_token} = decode_json($response->decoded_content);
   } else {
-    my $error = decode_json($response->decoded_content);
-    die $error->{error};
+
+    my $jsonerror;
+    eval {
+        $jsonerror = decode_json($response->decoded_content);
+    };
+    if ($@) {
+	my $err = $@;
+	chomp($err);
+	die("Got error '$err' when decoding json respons:\n'" . $response->decoded_content);
+    }
+
+    die $jsonerror->{error};
+
   }
 }
 
