@@ -384,7 +384,7 @@ See details of option at https://cloud.google.com/bigquery/docs/reference/v2/.
           dataset_id => $dataset_id,
           table_id => $table_id,
           content => {
-            talbeReferece => {
+            tableReference => {
               projectId => $project_id,
               datasetId => $dataset_id,
               tableId => $table_id,
