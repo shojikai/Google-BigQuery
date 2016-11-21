@@ -527,15 +527,19 @@ sub load {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } elsif ($async) {
     # return job_id if async is true.
     return $response->{jobReference}{jobId};
   } elsif ($response->{status}{state} eq 'DONE') {
     if (defined $response->{status}{errors}) {
+      my @all_errors;
       foreach my $error (@{$response->{status}{errors}}) {
         warn encode_json($error), "\n";
+        push @all_errors, $error;
       }
+      $self->{_last_error} = join( "\n", @all_errors );
       return 0;
     } else {
       return 1;
@@ -935,6 +939,12 @@ sub get_nextPageToken {
   } else {
     return undef;
   }
+}
+
+sub errstr {
+  my $self = shift;
+  
+  return $self->{_last_error};
 }
 
 1;
@@ -1357,6 +1367,13 @@ e.g. Updates description in an existing table.
       description => 'Update!',
     },
   );
+
+=item * errstr
+
+Returns the last captured error message. Note that not all methods
+yet capture error messages. Currently supported methods:
+
+load()
 
 =back
 
