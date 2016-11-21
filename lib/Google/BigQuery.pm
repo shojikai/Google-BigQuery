@@ -654,7 +654,7 @@ sub selectrow_array {
   return @ret;
 }
 
-sub selectall_arrayref {
+sub selectall {
   my ($self, %args) = @_;
 
   my $query = $args{query};
@@ -700,6 +700,18 @@ sub selectall_arrayref {
     return 0;
   }
 
+  return $response;
+}
+
+sub selectall_arrayref {
+  my ($self, %args) = @_;
+  
+  my $response = $self->selectall( %args );
+  
+  if ( $response == 0 ) {
+    return $response;
+  }
+  
   my $ret = [];
   foreach my $rows (@{$response->{rows}}) {
     my $row = [];
@@ -710,6 +722,37 @@ sub selectall_arrayref {
   }
 
   return $ret;
+  
+}
+
+sub selectall_aoh_and_columns {
+  my ($self, %args) = @_;
+  
+  my $response = $self->selectall( %args );
+  
+  if ( $response == 0 ) {
+    return $response;
+  }
+  
+  my $ret = [];
+  
+  my @field_list;
+  foreach my $field_def ( @{$response->{schema}->{fields}} ) {
+    push @field_list, $field_def->{name};
+  }
+  
+  foreach my $rows (@{$response->{rows}}) {
+    my $row = {};
+    my $counter = 0;
+    foreach my $field (@{$rows->{f}}) {
+      $row->{ $field_list[$counter] } = $field->{v};
+      $counter ++;
+    }
+    push @$ret, $row;
+  }
+
+  return ( $ret, \@field_list );
+  
 }
 
 sub is_exists_dataset {
@@ -1217,6 +1260,26 @@ Select a row.
 Select rows.
 
   $bq->selectrow_array(           # return arrayref of rows
+    project_id => $project_id,    # required if default project is not set
+    query => $query,              # required
+    dataset_id => $dataset_id,    # optional
+    maxResults => $maxResults,    # optional
+    timeoutMs => $timeoutMs,      # optional
+    dryRun => $boolean,           # optional
+    useQueryCache => $boolean,    # optional
+  );
+
+=item * selectall_aoh_and_columns
+
+Select rows. Returns:
+
+[
+   \@array_of_hashes
+ , \@column_headings
+
+]
+
+  $bq->selectall_aoh_and_columns( # returns aoh of rows and column headings
     project_id => $project_id,    # required if default project is not set
     query => $query,              # required
     dataset_id => $dataset_id,    # optional
