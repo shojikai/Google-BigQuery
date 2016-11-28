@@ -527,7 +527,7 @@ sub load {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
-    $self->{_last_error} = $response->{error}{message};
+    $self->{_last_error} = encode_json( $response->{error}{message} );
     return 0;
   } elsif ($async) {
     # return job_id if async is true.
@@ -537,7 +537,7 @@ sub load {
       my @all_errors;
       foreach my $error (@{$response->{status}{errors}}) {
         warn encode_json($error), "\n";
-        push @all_errors, $error;
+        push @all_errors, encode_json( $error );
       }
       $self->{_last_error} = join( "\n", @all_errors );
       return 0;
