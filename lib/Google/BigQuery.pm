@@ -143,6 +143,7 @@ sub create_dataset {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } else {
     return 1;
@@ -181,6 +182,7 @@ sub drop_dataset {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } else {
     return 1;
@@ -215,6 +217,7 @@ sub show_datasets {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return undef;
   }
 
@@ -251,6 +254,7 @@ sub desc_dataset {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return undef;
   } else {
     return $response;
@@ -304,9 +308,11 @@ sub create_table {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } elsif (defined $args{schema} && !defined $response->{schema}) {
     warn "no create schema";
+    $self->{_last_error} = "no create schema";
     return 0;
   } else {
     return 1;
@@ -344,6 +350,7 @@ sub drop_table {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } else {
     return 1;
@@ -381,6 +388,7 @@ sub show_tables {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return undef;
   }
 
@@ -423,6 +431,7 @@ sub desc_table {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return undef;
   } else {
     return $response;
@@ -527,7 +536,7 @@ sub load {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
-    $self->{_last_error} = encode_json( $response->{error}{message} );
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } elsif ($async) {
     # return job_id if async is true.
@@ -593,11 +602,15 @@ sub insert {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } elsif (defined $response->{insertErrors}) {
+    my @all_errors;
     foreach my $error (@{$response->{insertErrors}}) {
       warn encode_json($error), "\n";
+      push @all_errors, encode_json( $error );
     }
+    $self->{_last_error} = join( "\n", @all_errors );
     return 0;
   } else {
     return 1;
@@ -647,6 +660,7 @@ sub selectrow_array {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   }
 
@@ -701,6 +715,7 @@ sub selectall {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   }
 
@@ -784,6 +799,7 @@ sub is_exists_dataset {
 
   if (defined $response->{error}) {
     #warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } else {
     return 1;
@@ -821,6 +837,7 @@ sub is_exists_table {
 
   if (defined $response->{error}) {
     #warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } else {
     return 1;
@@ -916,12 +933,16 @@ sub extract {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } elsif ($response->{status}{state} eq 'DONE') {
     if (defined $response->{status}{errors}) {
+      my @all_errors;
       foreach my $error (@{$response->{status}{errors}}) {
         warn encode_json($error), "\n";
+        push @all_errors, encode_json($error);
       }
+      $self->{_last_error} = join( "\n", @all_errors );
       return 0;
     } else {
       return 1;
@@ -945,6 +966,12 @@ sub errstr {
   my $self = shift;
   
   return $self->{_last_error};
+}
+
+sub clear_errstr {
+  my $self = shift;
+  
+  $self->{_last_error} = "";
 }
 
 1;
