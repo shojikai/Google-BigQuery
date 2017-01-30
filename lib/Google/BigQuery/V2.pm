@@ -87,6 +87,12 @@ sub request {
     }
 
     my $response = $self->{ua}->request($request);
+    
+    if ( $self->{_debug} ) {
+        $self->{_last_request}  = encode_json( $request );
+        $self->{_last_response} = encode_json( $response );
+    }
+    
     if (defined $response->content) {
       my $content = decode_json($response->content);
       if (defined $content->{error}) {

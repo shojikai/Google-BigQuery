@@ -51,6 +51,7 @@ sub new {
 
   $self->_auth;
   $self->_set_rest_description;
+  $self->{_debug} = $args{debug} if $args{debug};
 
   return $self;
 }
@@ -965,7 +966,7 @@ sub get_nextPageToken {
 sub errstr {
   my $self = shift;
   
-  return $self->{_last_error};
+  return $self->{_last_error} . "\n\nLast Request:\n" . $self->{_last_request} . "\n\nLast Response\n" . $self->{_last_response};
 }
 
 sub clear_errstr {
