@@ -6,7 +6,6 @@ use warnings;
 our $VERSION = "1.02";
 
 use Class::Load qw(load_class);
-use Crypt::OpenSSL::PKCS12;
 use JSON qw(decode_json encode_json);
 use JSON::WebToken;
 use LWP::UserAgent;
@@ -42,6 +41,7 @@ sub new {
     close $in;
     $self->{private_key} = $private_key_json->{private_key};
   } elsif ($self->{private_key_file} =~ /\.p12$/) {
+    require Crypt::OpenSSL::PKCS12;
     my $password = "notasecret";
     my $pkcs12 = Crypt::OpenSSL::PKCS12->new_from_file($self->{private_key_file});
     $self->{private_key} = $pkcs12->private_key($password);
