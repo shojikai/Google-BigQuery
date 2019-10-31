@@ -108,10 +108,19 @@ unlink $load_file;
 my ($count) = $bigquery->selectrow_array(query => "SELECT COUNT(*) FROM $table_id");
 is($count, 43, "SELECT COUNT(*) FROM $table_id");
 
+# selectrow_array (standard SQL)
+my ($count) = $bigquery->selectrow_array(query => "SELECT COUNT(*) FROM $table_id", useLegacySql => 'false');
+is($count, 43, "SELECT COUNT(*) FROM $table_id (standard SQL)");
+
 # selectall_arrayref
 my $aref = $bigquery->selectall_arrayref(query => "SELECT * FROM $table_id");
 is(scalar @{$aref}, 43, "SELECT * FROM $table_id (number of rows)");
 is(scalar @{$aref->[0]}, 2, "SELECT * FROM $table_id (number of fields)");
+
+# selectall_arrayref (standard SQL)
+my $aref = $bigquery->selectall_arrayref(query => "SELECT * FROM $table_id", useLegacySql => 'false');
+is(scalar @{$aref}, 43, "SELECT * FROM $table_id (number of rows) (standard SQL)");
+is(scalar @{$aref->[0]}, 2, "SELECT * FROM $table_id (number of fields) (standard SQL)");
 
 # drop table
 $ret = $bigquery->drop_table(table_id => $table_id);
