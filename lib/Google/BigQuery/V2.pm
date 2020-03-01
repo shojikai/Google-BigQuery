@@ -182,4 +182,9 @@ sub request {
   }
 }
 
+sub get_info {
+    my $self = shift;
+    return "I don't got no stiiinking info";
+}
+
 1;
