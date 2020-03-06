@@ -51,6 +51,7 @@ sub new {
 
   $self->_auth;
   $self->_set_rest_description;
+  $self->{_debug} = $args{debug} if $args{debug};
 
   return $self;
 }
@@ -143,6 +144,7 @@ sub create_dataset {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } else {
     return 1;
@@ -181,6 +183,7 @@ sub drop_dataset {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } else {
     return 1;
@@ -215,6 +218,7 @@ sub show_datasets {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return undef;
   }
 
@@ -251,6 +255,7 @@ sub desc_dataset {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return undef;
   } else {
     return $response;
@@ -304,9 +309,11 @@ sub create_table {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } elsif (defined $args{schema} && !defined $response->{schema}) {
     warn "no create schema";
+    $self->{_last_error} = "no create schema";
     return 0;
   } else {
     return 1;
@@ -344,6 +351,7 @@ sub drop_table {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } else {
     return 1;
@@ -381,6 +389,7 @@ sub show_tables {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return undef;
   }
 
@@ -423,6 +432,7 @@ sub desc_table {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return undef;
   } else {
     return $response;
@@ -527,15 +537,19 @@ sub load {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } elsif ($async) {
     # return job_id if async is true.
     return $response->{jobReference}{jobId};
   } elsif ($response->{status}{state} eq 'DONE') {
     if (defined $response->{status}{errors}) {
+      my @all_errors;
       foreach my $error (@{$response->{status}{errors}}) {
         warn encode_json($error), "\n";
+        push @all_errors, encode_json( $error );
       }
+      $self->{_last_error} = join( "\n", @all_errors );
       return 0;
     } else {
       return 1;
@@ -589,11 +603,15 @@ sub insert {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } elsif (defined $response->{insertErrors}) {
+    my @all_errors;
     foreach my $error (@{$response->{insertErrors}}) {
       warn encode_json($error), "\n";
+      push @all_errors, encode_json( $error );
     }
+    $self->{_last_error} = join( "\n", @all_errors );
     return 0;
   } else {
     return 1;
@@ -643,6 +661,7 @@ sub selectrow_array {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   }
 
@@ -654,7 +673,7 @@ sub selectrow_array {
   return @ret;
 }
 
-sub selectall_arrayref {
+sub selectall {
   my ($self, %args) = @_;
 
   my $query = $args{query};
@@ -697,9 +716,22 @@ sub selectall_arrayref {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   }
 
+  return $response;
+}
+
+sub selectall_arrayref {
+  my ($self, %args) = @_;
+  
+  my $response = $self->selectall( %args );
+  
+  if ( $response == 0 ) {
+    return $response;
+  }
+  
   my $ret = [];
   foreach my $rows (@{$response->{rows}}) {
     my $row = [];
@@ -710,6 +742,157 @@ sub selectall_arrayref {
   }
 
   return $ret;
+  
+}
+
+sub selectall_aoh_and_columns {
+  my ($self, %args) = @_;
+  
+  my $response = $self->selectall( %args );
+  
+  if ( $response == 0 ) {
+    return $response;
+  }
+  
+  my $ret = [];
+  
+  my @field_list;
+  foreach my $field_def ( @{$response->{schema}->{fields}} ) {
+    push @field_list, $field_def->{name};
+  }
+  
+  foreach my $rows (@{$response->{rows}}) {
+    my $row = {};
+    my $counter = 0;
+    foreach my $field (@{$rows->{f}}) {
+      $row->{ $field_list[$counter] } = $field->{v};
+      $counter ++;
+    }
+    push @$ret, $row;
+  }
+
+  return ( $ret, \@field_list );
+  
+}
+
+sub prepare {
+  
+  # TODO: we could insert a job with the dryRun parameter set to validate the SQL
+  # TODO: https://stackoverflow.com/questions/31060881/is-there-any-method-to-validate-a-query-in-the-bigquery-api
+  
+  my ( $self , $sql ) = @_;
+  
+  $self->{_prepared_sql} = $sql;
+  
+  return $self;
+  
+}  
+
+sub finish {
+  
+  my $self = shift;
+  
+  $self->{_prepared_sql} = '';
+  
+}
+
+sub execute {
+  
+  my ( $self , $something , $bind_parameters ) = @_;
+  
+  my $escaped_sql = $self->bind_parameters( $self->{_prepared_sql} , $bind_parameters );
+  
+  my $response = $self->request(
+      resource            => 'jobs'                       # BigQuery API resource
+    , method              => 'query'                      # BigQuery API method
+    , content             => { query => $escaped_sql }
+  );
+  
+  $self->{_execute_response} = $response;
+  
+  if (defined $response->{error}) {
+    $self->{_last_error} = $response->{error}{message}; # TODO need sub to encode all error parts
+    return 0;
+  }
+  
+  my @field_list;
+  
+  foreach my $field_def ( @{$response->{schema}->{fields}} ) {
+    push @field_list, $field_def->{name};
+  }
+  
+  $self->{NAME} = \@field_list;
+  $self->{_recordset_position} = 0; # fetchrow_array uses this
+  $self->{_recordset_size} = @{$response->{rows}};
+  
+  return 1;
+  
+}
+
+sub fetchrow_array {
+  
+  my ( $self ) = @_;
+  
+  if ( ! $self->{_recordset_size} || ( $self->{_recordset_size} - 1 ) < $self->{_recordset_position} ) {
+    return;
+  }
+  
+  my @row;
+  
+  my $this_response_row = $self->{_execute_response}->{rows}[ $self->{_recordset_position} ];
+  
+  foreach my $field ( @{$this_response_row->{f} } ) {
+    push @row, $field->{v};
+  }
+  
+  $self->{_recordset_position} ++;
+  
+  return @row;
+  
+}
+
+sub bind_parameters {
+  
+  my ( $self , $parameterized_sql , $parameters ) = @_;
+  
+  # This will give us the start and end positions ( in 2-item sets )
+  # of all placeholders ( ? style only ) in the SQL:
+  
+  my @parameter_position_sets = $self->match_all_placeholders( $parameterized_sql );
+  
+  my $final_sql    = '';
+  my $position     = 0;
+  my $parameter_no = 0;
+  
+  foreach my $position_set ( @parameter_position_sets ) {
+    $position ++;
+    $final_sql .= substr( $parameterized_sql , $position , $$position_set[0] - $position - 1 );
+    my $this_parameter = $$parameters[ $parameter_no ];
+    $this_parameter =~ s/'/\\'/g;
+    $final_sql .= "'" . $this_parameter . "'";
+    $parameter_no ++;
+  }
+  
+  if ( $final_sql eq '' ) {
+    $final_sql = $parameterized_sql;
+  }
+  
+  return $final_sql;
+  
+}
+
+sub match_all_placeholders {
+    
+    my ( $self, $sql ) = @_;
+    
+    my @ret;
+    
+    while ( $sql =~ /\?/mg ) {
+        push @ret, [ $-[0], $+[0] ];
+    }
+    
+    return @ret;
+    
 }
 
 sub is_exists_dataset {
@@ -737,6 +920,7 @@ sub is_exists_dataset {
 
   if (defined $response->{error}) {
     #warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } else {
     return 1;
@@ -774,6 +958,7 @@ sub is_exists_table {
 
   if (defined $response->{error}) {
     #warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } else {
     return 1;
@@ -869,12 +1054,16 @@ sub extract {
 
   if (defined $response->{error}) {
     warn $response->{error}{message};
+    $self->{_last_error} = $response->{error}{message};
     return 0;
   } elsif ($response->{status}{state} eq 'DONE') {
     if (defined $response->{status}{errors}) {
+      my @all_errors;
       foreach my $error (@{$response->{status}{errors}}) {
         warn encode_json($error), "\n";
+        push @all_errors, encode_json($error);
       }
+      $self->{_last_error} = join( "\n", @all_errors );
       return 0;
     } else {
       return 1;
@@ -892,6 +1081,18 @@ sub get_nextPageToken {
   } else {
     return undef;
   }
+}
+
+sub errstr {
+  my $self = shift;
+  
+  return $self->{_last_error} . "\n\nLast Request:\n" . $self->{_last_request} . "\n\nLast Response\n" . $self->{_last_response};
+}
+
+sub clear_errstr {
+  my $self = shift;
+  
+  $self->{_last_error} = "";
 }
 
 1;
@@ -1226,6 +1427,26 @@ Select rows.
     useQueryCache => $boolean,    # optional
   );
 
+=item * selectall_aoh_and_columns
+
+Select rows. Returns:
+
+[
+   \@array_of_hashes
+ , \@column_headings
+
+]
+
+  $bq->selectall_aoh_and_columns( # returns aoh of rows and column headings
+    project_id => $project_id,    # required if default project is not set
+    query => $query,              # required
+    dataset_id => $dataset_id,    # optional
+    maxResults => $maxResults,    # optional
+    timeoutMs => $timeoutMs,      # optional
+    dryRun => $boolean,           # optional
+    useQueryCache => $boolean,    # optional
+  );
+
 =item * is_exists_dataset
 
 Check a dataset exists or not.
@@ -1294,6 +1515,13 @@ e.g. Updates description in an existing table.
       description => 'Update!',
     },
   );
+
+=item * errstr
+
+Returns the last captured error message. Note that not all methods
+yet capture error messages. Currently supported methods:
+
+load()
 
 =back
 

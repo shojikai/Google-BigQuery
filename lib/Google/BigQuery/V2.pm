@@ -87,6 +87,10 @@ sub request {
     }
 
     my $response = $self->{ua}->request($request);
+    
+    $self->{_last_request}  = $request->content;
+    $self->{_last_response} = $response->content;
+    
     if (defined $response->content) {
       my $content = decode_json($response->content);
       if (defined $content->{error}) {
@@ -98,10 +102,40 @@ sub request {
         return $json_response if $args{async};
 
         my $job_id = $json_response->{jobReference}{jobId};
+        my $error_count;
         while (1) {
-          my $json_response = $self->request(method => 'get', resource => 'jobs', job_id => $job_id);
-          if ($json_response->{status}{state} eq 'DONE') {
+          # TODO: This is problematic. Jobs run in a particular data centre, and we *can't* poll their status unless
+          # we pass the correct location. BUT ... *we* don't know the default location, and it will be different
+          # depending on how individual tables have been located. We could fetch a list of jobs, and inspect
+          # the location ID from there. But really, the API should just handle this. Maybe raise a bug?
+          my $json_response = $self->request(
+              method   => 'get'
+            , resource => 'jobs'
+            , job_id   => $job_id
+#            , job_id   => $job_id . "?location=australia-southeast1"
+#            , content  => { jobReference => { location => 'australia-southeast1' } }
+          ); 
+          if ( $json_response->{status}{state} eq 'DONE' ) {
             return $json_response;
+          } elsif ( exists $json_response->{error} ) {
+            warn "Received an error response while polling job status!\n";
+            my $errstr = "Unknown error - no errors found in response, but error key exists in response hash!";
+            if ( exists $json_response->{error}->{errors} ) {
+              my $json_errors = $json_response->{error}->{errors};
+              my @errors_array;
+              foreach my $this_error ( @{$json_errors} ) {
+                push @errors_array , $this_error->{message};
+              }
+              $errstr = join( "\n" , @errors_array );
+            }
+            $self->{_last_error} = $errstr;
+            warn $self->errstr;
+            $error_count ++;
+            if ( $error_count == 10 ) {
+              return 0;
+            }
+            print "Wating...(state: $json_response->{status}{state})\n" if defined $self->{verbose};
+            sleep(20);
           } else {
             print "Wating...(state: $json_response->{status}{state})\n" if defined $self->{verbose};
             sleep(1);
@@ -123,10 +157,14 @@ sub request {
     }
 
     my $request = HTTP::Request->new($http_method, $path, $header);
+    
     if ($http_method =~ /^(?:POST|PUT|PATCH)$/) {
       $request->header('Content-Type' => 'application/json');
       $request->content(encode_json($args{content}));
+    } elsif ( exists $args{content} ) {
+      $request->content(encode_json($args{content}));
     }
+          
     my $response = $self->{ua}->request($request);
 
     if ($response->code == 204) {
@@ -142,6 +180,11 @@ sub request {
       return { error => { message => 'Unknown Error' }};
     }
   }
+}
+
+sub get_info {
+    my $self = shift;
+    return "I don't got no stiiinking info";
 }
 
 1;
